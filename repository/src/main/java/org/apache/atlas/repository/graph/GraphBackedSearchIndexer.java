@@ -420,6 +420,7 @@ public class GraphBackedSearchIndexer implements SearchIndexer, ActiveStateChang
 
             // create fulltext indexes
             createFullTextIndex(management, ENTITY_TEXT_PROPERTY_KEY, String.class, SINGLE);
+            addEntityTypeIndexToFullTextIndex(management);
 
             createPropertyKey(management, IS_PROXY_KEY, Boolean.class, SINGLE);
             createPropertyKey(management, PROVENANCE_TYPE_KEY, Integer.class, SINGLE);
@@ -932,6 +933,18 @@ public class GraphBackedSearchIndexer implements SearchIndexer, ActiveStateChang
         }
 
         return propertyKey;
+    }
+
+    private void addEntityTypeIndexToFullTextIndex(AtlasGraphManagement management) {
+        AtlasGraphIndex fullTextIndex = management.getGraphIndex(FULLTEXT_INDEX);
+        AtlasPropertyKey typeNameKey  = management.getPropertyKey(ENTITY_TYPE_PROPERTY_KEY);
+
+        if (fullTextIndex != null && typeNameKey != null &&
+                fullTextIndex.getFieldKeys().stream().noneMatch(key -> StringUtils.equals(key.getName(), ENTITY_TYPE_PROPERTY_KEY))) {
+            management.addMixedIndex(FULLTEXT_INDEX, typeNameKey, true);
+
+            LOG.info("Added {} to {}", ENTITY_TYPE_PROPERTY_KEY, FULLTEXT_INDEX);
+        }
     }
     
     private void createVertexCompositeIndex(AtlasGraphManagement management, Class propertyClass, AtlasPropertyKey propertyKey,

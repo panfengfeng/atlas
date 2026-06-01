@@ -162,9 +162,10 @@ public class DiscoveryREST {
     /**
      * Retrieve data for the specified fulltext query
      *
-     * @param query  Fulltext query
-     * @param limit  limit the result set to only include the specified number of entries
-     * @param offset start offset of the result set (useful for pagination)
+     * @param query    Fulltext query
+     * @param typeName limit the result to only entities of specified type or its sub-types
+     * @param limit    limit the result set to only include the specified number of entries
+     * @param offset   start offset of the result set (useful for pagination)
      * @return Search results
      * @throws AtlasBaseException
      * @HTTP 200 On successful FullText lookup with some results, might return an empty list if execution succeeded
@@ -175,9 +176,12 @@ public class DiscoveryREST {
     @Path("/fulltext")
     @Timed
     public AtlasSearchResult searchUsingFullText(@QueryParam("query")                  String  query,
+                                                 @QueryParam("typeName")               String  typeName,
                                                  @QueryParam("excludeDeletedEntities") boolean excludeDeletedEntities,
                                                  @QueryParam("limit")                  int     limit,
                                                  @QueryParam("offset")                 int     offset) throws AtlasBaseException {
+        Servlets.validateQueryParamLength("typeName", typeName);
+
         // Validate FullText query for max allowed length
         if(StringUtils.isNotEmpty(query) && query.length() > maxFullTextQueryLength){
             throw new AtlasBaseException(AtlasErrorCode.INVALID_QUERY_LENGTH, Constants.MAX_FULLTEXT_QUERY_STR_LENGTH );
@@ -188,10 +192,10 @@ public class DiscoveryREST {
         try {
             if (AtlasPerfTracer.isPerfTraceEnabled(PERF_LOG)) {
                 perf = AtlasPerfTracer.getPerfTracer(PERF_LOG, "DiscoveryREST.searchUsingFullText(" + query + "," +
-                        limit + "," + offset + ")");
+                        typeName + "," + limit + "," + offset + ")");
             }
 
-            return discoveryService.searchUsingFullTextQuery(query, excludeDeletedEntities, limit, offset);
+            return discoveryService.searchUsingFullTextQuery(query, typeName, excludeDeletedEntities, limit, offset);
         } finally {
             AtlasPerfTracer.log(perf);
         }

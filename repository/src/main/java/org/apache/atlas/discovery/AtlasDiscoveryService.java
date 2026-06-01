@@ -52,12 +52,13 @@ public interface AtlasDiscoveryService {
     /**
      *
      * @param query search query.
+     * @param typeName type name.
      * @param excludeDeletedEntities exclude deleted entities in search result.
      * @param limit number of resultant rows (for pagination). [ limit > 0 ] and [ limit < maxlimit ]. -1 maps to atlas.search.defaultlimit property.
      * @param offset offset to the results returned (for pagination). [ offset >= 0 ]. -1 maps to offset 0.
      * @return AtlasSearchResult
      */
-    AtlasSearchResult searchUsingFullTextQuery(String query, boolean excludeDeletedEntities, int limit, int offset) throws AtlasBaseException;
+    AtlasSearchResult searchUsingFullTextQuery(String query, String typeName, boolean excludeDeletedEntities, int limit, int offset) throws AtlasBaseException;
 
     /**
      *

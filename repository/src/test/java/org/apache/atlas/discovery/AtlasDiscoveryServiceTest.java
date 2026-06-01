@@ -196,6 +196,20 @@ public class AtlasDiscoveryServiceTest extends BasicTestSetup {
     }
 
     @Test
+    public void fullTextQueryWithTypeNameAndOffset() throws AtlasBaseException {
+        AtlasSearchResult firstPage  = discoveryService.searchUsingFullTextQuery("sales", HIVE_TABLE_TYPE, false, 2, 0);
+        AtlasSearchResult secondPage = discoveryService.searchUsingFullTextQuery("sales", HIVE_TABLE_TYPE, false, 1, 1);
+
+        assertEquals(firstPage.getType(), HIVE_TABLE_TYPE);
+        assertEquals(firstPage.getFullTextResult().size(), 2);
+        assertEquals(secondPage.getFullTextResult().size(), 1);
+        assertEquals(secondPage.getFullTextResult().get(0).getEntity().getGuid(),
+                     firstPage.getFullTextResult().get(1).getEntity().getGuid());
+
+        firstPage.getFullTextResult().forEach(result -> assertEquals(result.getEntity().getTypeName(), HIVE_TABLE_TYPE));
+    }
+
+    @Test
     public void queryEntityEntityFilter() throws AtlasBaseException {
         SearchParameters params = new SearchParameters();
         params.setTypeName(HIVE_TABLE_TYPE);

@@ -175,17 +175,37 @@ public class EntityDiscoveryService implements AtlasDiscoveryService {
 
     @Override
     @GraphTransaction
-    public AtlasSearchResult searchUsingFullTextQuery(String fullTextQuery, boolean excludeDeletedEntities, int limit, int offset)
+    public AtlasSearchResult searchUsingFullTextQuery(String fullTextQuery, String typeName, boolean excludeDeletedEntities, int limit, int offset)
                                                       throws AtlasBaseException {
-        AtlasSearchResult ret      = new AtlasSearchResult(fullTextQuery, AtlasQueryType.FULL_TEXT);
-        QueryParams       params   = QueryParams.getNormalizedParams(limit, offset);
-        AtlasIndexQuery   idxQuery = toAtlasIndexQuery(fullTextQuery);
+        AtlasSearchResult ret        = new AtlasSearchResult(fullTextQuery, AtlasQueryType.FULL_TEXT);
+        QueryParams       params     = QueryParams.getNormalizedParams(limit, offset);
+        AtlasEntityType   entityType = null;
+        Set<String>       typeNames  = null;
+
+        if (StringUtils.isNotEmpty(typeName)) {
+            entityType = typeRegistry.getEntityTypeByName(typeName);
+
+            if (entityType == null) {
+                throw new AtlasBaseException(UNKNOWN_TYPENAME, typeName);
+            }
+
+            ret.setType(typeName);
+
+            if (StringUtils.isEmpty(getTypeFilter(typeRegistry, typeName, maxTypesLengthInIdxQuery))) {
+                typeNames = entityType.getTypeAndAllSubTypes();
+
+                LOG.warn("'{}' has too many subtypes to include in fulltext index-query; filtering type in memory", typeName);
+            }
+        }
+
+        AtlasIndexQuery idxQuery = toAtlasIndexQuery(fullTextQuery, typeName);
 
         if (LOG.isDebugEnabled()) {
-            LOG.debug("Executing Full text query: {}", fullTextQuery);
+            LOG.debug("Executing Full text query: {} with typeName: {}", fullTextQuery, typeName);
         }
-        ret.setFullTextResult(getIndexQueryResults(idxQuery, params, excludeDeletedEntities));
+
         ret.setApproximateCount(idxQuery.vertexTotals());
+        ret.setFullTextResult(getIndexQueryResults(idxQuery, params, excludeDeletedEntities, typeNames));
 
         scrubSearchResults(ret);
 
@@ -934,24 +954,41 @@ public class EntityDiscoveryService implements AtlasDiscoveryService {
         return String.format(indexSearchPrefix + "\"%s\":(%s)", Constants.ENTITY_TEXT_PROPERTY_KEY, queryText.toString());
     }
 
-    private List<AtlasFullTextResult> getIndexQueryResults(AtlasIndexQuery query, QueryParams params, boolean excludeDeletedEntities) throws AtlasBaseException {
-        List<AtlasFullTextResult> ret  = new ArrayList<>();
-        Iterator<Result>          iter = query.vertices();
+    private List<AtlasFullTextResult> getIndexQueryResults(AtlasIndexQuery query, QueryParams params, boolean excludeDeletedEntities,
+                                                          Set<String> typeNames) throws AtlasBaseException {
+        List<AtlasFullTextResult> ret       = new ArrayList<>();
+        int                       resultIdx = 0;
 
-        while (iter.hasNext() && ret.size() < params.limit()) {
-            Result      idxQueryResult = iter.next();
-            AtlasVertex vertex         = idxQueryResult.getVertex();
+        for (int queryOffset = 0; ret.size() < params.limit(); queryOffset += maxResultSetSize) {
+            Iterator<Result> iter        = query.vertices(queryOffset, maxResultSetSize);
+            int              resultCount = 0;
 
-            if (skipDeletedEntities(excludeDeletedEntities, vertex)) {
-                continue;
+            while (iter.hasNext() && ret.size() < params.limit()) {
+                Result      idxQueryResult = iter.next();
+                AtlasVertex vertex         = idxQueryResult.getVertex();
+
+                resultCount++;
+
+                if (skipDeletedEntities(excludeDeletedEntities, vertex)) {
+                    continue;
+                }
+
+                String guid = vertex != null ? vertex.getProperty(Constants.GUID_PROPERTY_KEY, String.class) : null;
+
+                if (guid != null && (typeNames == null || typeNames.contains(GraphHelper.getTypeName(vertex)))) {
+                    if (resultIdx++ < params.offset()) {
+                        continue;
+                    }
+
+                    AtlasEntityHeader entity = entityRetriever.toAtlasEntityHeader(vertex);
+                    Double            score  = idxQueryResult.getScore();
+
+                    ret.add(new AtlasFullTextResult(entity, score));
+                }
             }
 
-            String guid = vertex != null ? vertex.getProperty(Constants.GUID_PROPERTY_KEY, String.class) : null;
-
-            if (guid != null) {
-                AtlasEntityHeader entity = entityRetriever.toAtlasEntityHeader(vertex);
-                Double score = idxQueryResult.getScore();
-                ret.add(new AtlasFullTextResult(entity, score));
+            if (resultCount < maxResultSetSize) {
+                break;
             }
         }
 
@@ -959,7 +996,28 @@ public class EntityDiscoveryService implements AtlasDiscoveryService {
     }
 
     private AtlasIndexQuery toAtlasIndexQuery(String fullTextQuery) {
-        String graphQuery = String.format(indexSearchPrefix + "\"%s\":(%s)", Constants.ENTITY_TEXT_PROPERTY_KEY, fullTextQuery);
+        return toAtlasIndexQuery(fullTextQuery, null);
+    }
+
+    private AtlasIndexQuery toAtlasIndexQuery(String fullTextQuery, String typeName) {
+        String graphQuery;
+
+        if (StringUtils.isNotEmpty(typeName)) {
+            String typeFilter = getTypeFilter(typeRegistry, typeName, maxTypesLengthInIdxQuery);
+
+            graphQuery = String.format(indexSearchPrefix + "\"%s\":(%s)", Constants.ENTITY_TEXT_PROPERTY_KEY, fullTextQuery);
+
+            if (StringUtils.isNotEmpty(typeFilter)) {
+                graphQuery += String.format(" AND " + indexSearchPrefix + "\"%s\":%s", Constants.ENTITY_TYPE_PROPERTY_KEY, typeFilter);
+            }
+        } else {
+            graphQuery = String.format(indexSearchPrefix + "\"%s\":(%s)", Constants.ENTITY_TEXT_PROPERTY_KEY, fullTextQuery);
+        }
+
+        if (LOG.isDebugEnabled()) {
+            LOG.debug("Full text index query: {}", graphQuery);
+        }
+
         return graph.indexQuery(Constants.FULLTEXT_INDEX, graphQuery);
     }
 

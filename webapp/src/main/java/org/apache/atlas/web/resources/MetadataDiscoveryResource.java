@@ -247,7 +247,7 @@ public class MetadataDiscoveryResource {
             query = ParamChecker.notEmpty(query, "query cannot be null or empty");
 
             QueryParams          queryParams    = validateQueryParams(limit, offset);
-            AtlasSearchResult    result         = atlasDiscoveryService.searchUsingFullTextQuery(query, false, queryParams.limit(), queryParams.offset());
+            AtlasSearchResult    result         = atlasDiscoveryService.searchUsingFullTextQuery(query, null, false, queryParams.limit(), queryParams.offset());
             FullTextSearchResult fullTextResult = new FullTextSearchResult();
 
             fullTextResult.setQueryType(QUERY_TYPE_FULLTEXT);
